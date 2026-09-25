@@ -51,6 +51,22 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' }).format(new Date(`${value}T12:00:00`))
 }
 
+function getTodayDate() {
+  const today = new Date()
+  const year = today.getFullYear()
+  const month = String(today.getMonth() + 1).padStart(2, '0')
+  const day = String(today.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function formatHeaderDate(value: Date) {
+  return new Intl.DateTimeFormat('pt-BR', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+  }).format(value)
+}
+
 export default function Dashboard() {
   const [tables, setTables] = useState<Table[]>([])
   const [reservations, setReservations] = useState<Reservation[]>([])
@@ -69,22 +85,34 @@ export default function Dashboard() {
       return
     }
 
-    const [tablesResult, reservationsResult, customersResult] = await Promise.all([
-      supabase.from('tables').select('id, code, capacity, status, position_x, position_y, active').eq('active', true),
-      supabase.from('reservations').select('id, customer_id, reservation_date, start_time, guest_count, status, notes').order('reservation_date', { ascending: true }).order('start_time', { ascending: true }).limit(12),
-      supabase.from('customers').select('id, name, phone').order('name', { ascending: true }),
-    ])
+    try {
+      const today = getTodayDate()
+      const [tablesResult, reservationsResult, customersResult] = await Promise.all([
+        supabase.from('tables').select('id, code, capacity, status, position_x, position_y, active').eq('active', true),
+        supabase
+          .from('reservations')
+          .select('id, customer_id, reservation_date, start_time, guest_count, status, notes')
+          .eq('reservation_date', today)
+          .order('start_time', { ascending: true })
+          .limit(12),
+        supabase.from('customers').select('id, name, phone').order('name', { ascending: true }),
+      ])
 
-    const firstError = tablesResult.error || reservationsResult.error || customersResult.error
-    if (firstError) {
-      setError(firstError.message)
-    } else {
+      const firstError = tablesResult.error || reservationsResult.error || customersResult.error
+      if (firstError) {
+        setError(firstError.message)
+        return
+      }
+
       setTables((tablesResult.data ?? []) as Table[])
       setReservations((reservationsResult.data ?? []) as Reservation[])
       setCustomers((customersResult.data ?? []) as Customer[])
       setLastUpdated(new Date())
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Erro inesperado ao carregar os dados.')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }, [])
 
   useEffect(() => {
@@ -132,7 +160,7 @@ export default function Dashboard() {
         <main className="min-w-0 flex-1">
           <header className="flex h-20 items-center justify-between border-b border-border bg-card px-5 sm:px-8">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Quarta-feira, 24 de abril</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">{formatHeaderDate(new Date())}</p>
               <h1 className="mt-1 text-xl font-bold tracking-tight sm:text-2xl">Visão geral</h1>
             </div>
             <div className="flex items-center gap-3">
